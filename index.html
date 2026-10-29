@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Яцзы</title>
+<meta name="theme-color" content="#2a4bd1">
+<meta name="description" content="Листок для игры в Яцзы с автоподсчётом очков">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0}
+/* Layout: one score pad — sticky category column on the left, a column per player, totals bands across */
+:root{
+  --bg:#eef1f6; --paper:#ffffff; --ink:#1b2340; --muted:#66708f; --line:#d6dbe7;
+  --band:#e4e9f5; --accent:#2a4bd1; --accent-soft:#dfe5fb; --pip:#c8323a; --good:#1f8a52;
+  --f-display:"Unbounded",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,sans-serif;
+  --f-num:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1322; --paper:#171c30; --ink:#e6e9f5; --muted:#8d95b3; --line:#2a3150;
+  --band:#1f2640; --accent:#8ea4ff; --accent-soft:#252f58; --pip:#ff6b72; --good:#5fd394; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1322; --paper:#171c30; --ink:#e6e9f5; --muted:#8d95b3; --line:#2a3150;
+  --band:#1f2640; --accent:#8ea4ff; --accent-soft:#252f58; --pip:#ff6b72; --good:#5fd394; color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.4}
+.wrap{max-width:960px;margin:0 auto;padding-block:24px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:16px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+h1{font-family:var(--f-display);font-weight:800;font-size:clamp(26px,5vw,38px);margin:0;letter-spacing:-.01em;display:flex;align-items:center;gap:12px}
+.die{width:34px;height:34px;border-radius:8px;background:var(--accent);display:inline-grid;grid-template:repeat(3,1fr)/repeat(3,1fr);padding:5px;box-sizing:border-box;flex:none}
+.die i{width:6px;height:6px;border-radius:50%;background:var(--paper);place-self:center}
+.sub{color:var(--muted);margin:4px 0 0}
+.tools{display:flex;gap:8px;flex-wrap:wrap}
+button{font:inherit;font-weight:600;font-size:14px;border-radius:8px;padding:8px 14px;cursor:pointer;border:1px solid var(--line);background:var(--paper);color:var(--ink)}
+button:hover{border-color:var(--accent)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--paper)}
+button.confirm{background:var(--pip);border-color:var(--pip);color:#fff}
+.pad{background:var(--paper);border:1px solid var(--line);border-radius:12px;overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:max-content}
+th,td{border-bottom:1px solid var(--line);padding:0;text-align:center}
+td+td,th+th{border-left:1px solid var(--line)}
+.cat{position:sticky;left:0;background:var(--paper);text-align:left;padding:8px 12px;min-width:150px;z-index:1;border-right:1px solid var(--line)}
+.cat b{display:block;font-weight:600}
+.cat small{color:var(--muted);font-size:12px}
+.cat .row{display:flex;align-items:center;gap:10px}
+.mini{display:inline-grid;grid-template:repeat(3,1fr)/repeat(3,1fr);width:22px;height:22px;border:1.5px solid var(--ink);border-radius:5px;padding:2px;box-sizing:border-box;flex:none}
+.mini i{width:4px;height:4px;border-radius:50%;background:var(--pip);place-self:center}
+thead th{background:var(--band);padding:6px}
+thead .cat{background:var(--band);font-family:var(--f-display);font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.pname{width:100%;min-width:84px;max-width:120px;font:600 14px var(--f-body);text-align:center;border:0;background:transparent;color:var(--ink);padding:6px 4px;border-radius:6px}
+.pname:hover{background:var(--paper)}
+.del{border:0;background:none;color:var(--muted);font-size:12px;padding:0 4px;font-weight:500}
+.del:hover{color:var(--pip)}
+td input{width:100%;min-width:72px;box-sizing:border-box;border:0;background:transparent;text-align:center;font:600 17px var(--f-num);color:var(--ink);padding:10px 4px;font-variant-numeric:tabular-nums}
+td input::placeholder{color:var(--line)}
+td input.bad{color:var(--pip);background:color-mix(in srgb,var(--pip) 10%,transparent)}
+td input.zero{color:var(--muted);text-decoration:line-through}
+input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+input[type=number]{-moz-appearance:textfield}
+tr.section th{background:var(--accent-soft);color:var(--accent);font-family:var(--f-display);font-size:11px;letter-spacing:.08em;text-transform:uppercase;text-align:left;padding:7px 12px}
+tr.section th.cat{background:var(--accent-soft)}
+tr.sum td,tr.sum .cat{background:var(--band)}
+tr.sum td{font:600 16px var(--f-num);padding:8px 4px;font-variant-numeric:tabular-nums}
+tr.sum .cat b{font-weight:600}
+td.bonus-ok{color:var(--good)}
+tr.grand td,tr.grand .cat{background:var(--ink);color:var(--paper);border-bottom:0}
+tr.grand td{font:800 20px var(--f-num);padding:12px 4px}
+tr.grand .cat b{font-family:var(--f-display);font-size:13px;letter-spacing:.06em;text-transform:uppercase}
+td.leader{position:relative}
+td.leader::after{content:"★";position:absolute;top:3px;right:6px;font-size:11px;color:var(--pip)}
+.hint{color:var(--muted);font-size:13px;max-width:65ch}
+.hint b{color:var(--ink)}
+@media (max-width:480px){.cat{min-width:118px;padding:7px 8px}.cat small{display:none}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1><span class="die" aria-hidden="true"><i></i><i style="grid-area:1/3"></i><i style="grid-area:2/2"></i><i style="grid-area:3/1"></i><i style="grid-area:3/3"></i></span>Яцзы</h1>
+      <p class="sub">5 кубиков, 3 броска за ход. Каждая строка заполняется один раз.</p>
+    </div>
+    <div class="tools">
+      <button id="add" class="primary" type="button">+ Игрок</button>
+      <button id="reset" type="button">Новая игра</button>
+    </div>
+  </header>
+
+  <div class="pad"><table id="t"></table></div>
+
+  <p class="hint">Нажмите на клетку и введите очки. <b>0</b> — строка вычеркнута. Красным подсвечено значение, которое не подходит под правило строки. Бонус за верхнюю часть даётся при сумме от 63 (по три кубика каждого номинала).</p>
+</div>
+
+<script>
+const PIPS={1:[[2,2]],2:[[1,1],[3,3]],3:[[1,1],[2,2],[3,3]],4:[[1,1],[1,3],[3,1],[3,3]],5:[[1,1],[1,3],[2,2],[3,1],[3,3]],6:[[1,1],[2,1],[3,1],[1,3],[2,3],[3,3]]};
+const mini=n=>`<span class="mini" aria-hidden="true">${PIPS[n].map(([r,c])=>`<i style="grid-area:${r}/${c}"></i>`).join("")}</span>`;
+const names=["Единицы","Двойки","Тройки","Четвёрки","Пятёрки","Шестёрки"];
+const UPPER=[1,2,3,4,5,6].map(n=>({id:"u"+n,name:names[n-1],rule:`сумма ${n===1?"единиц":"кубиков «"+n+"»"}`,die:n,ok:v=>v%n===0&&v<=5*n}));
+const sumOk=(min,max)=>v=>v>=min&&v<=max;
+const LOWER=[
+  {id:"pair",name:"Пара",rule:"сумма двух одинаковых",ok:v=>v%2===0&&v>=2&&v<=12},
+  {id:"twopair",name:"Две пары",rule:"сумма двух разных пар",ok:v=>v%2===0&&v>=6&&v<=22},
+  {id:"three",name:"Тройка",rule:"сумма всех кубиков",ok:sumOk(5,30)},
+  {id:"four",name:"Каре",rule:"сумма всех кубиков",ok:sumOk(5,30)},
+  {id:"full",name:"Фулл-хаус",rule:"3 + 2 одинаковых · 25",ok:v=>v===25},
+  {id:"sst",name:"Малый стрит",rule:"4 подряд · 30",ok:v=>v===30},
+  {id:"lst",name:"Большой стрит",rule:"5 подряд · 40",ok:v=>v===40},
+  {id:"yatzy",name:"Яцзы",rule:"5 одинаковых · 50",ok:v=>v===50},
+  {id:"chance",name:"Шанс",rule:"сумма всех кубиков",ok:sumOk(5,30)},
+];
+const KEY="yatzy-sheet-v1";
+let state;
+try{state=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+if(!state||!Array.isArray(state.players))state={players:[{name:"Игрок 1",s:{}},{name:"Игрок 2",s:{}}]};
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){}};
+
+function totals(p){
+  const g=id=>Number(p.s[id])||0;
+  const up=UPPER.reduce((a,c)=>a+g(c.id),0);
+  const bonus=up>=63?35:0;
+  const low=LOWER.reduce((a,c)=>a+g(c.id),0);
+  return {up,bonus,low,total:up+bonus+low};
+}
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function render(){
+  const P=state.players;
+  const cell=(c,i)=>{const v=P[i].s[c.id];const has=v!==undefined&&v!=="";
+    const cls=has?(Number(v)===0?"zero":(c.ok(Number(v))?"":"bad")):"";
+    return `<td><input id="c-${i}-${c.id}" type="number" inputmode="numeric" min="0" data-p="${i}" data-c="${c.id}" class="${cls}" value="${has?esc(v):""}" placeholder="·" aria-label="${esc(P[i].name)}: ${c.name}"></td>`};
+  const row=c=>`<tr><th class="cat" scope="row"><div class="row">${c.die?mini(c.die):""}<div><b>${c.name}</b><small>${c.rule}</small></div></div></th>${P.map((_,i)=>cell(c,i)).join("")}</tr>`;
+  const T=P.map(totals);
+  const sumRow=(label,f,extra="")=>`<tr class="sum ${extra}"><th class="cat" scope="row"><b>${label}</b></th>${T.map((t,i)=>f(t,i)).join("")}</tr>`;
+  document.getElementById("t").innerHTML=
+   `<thead><tr><th class="cat">Строка</th>${P.map((p,i)=>`<th><input class="pname" id="n-${i}" data-n="${i}" value="${esc(p.name)}" aria-label="Имя игрока ${i+1}">${P.length>1?`<button class="del" type="button" data-del="${i}" aria-label="Убрать ${esc(p.name)}">убрать</button>`:""}</th>`).join("")}</tr></thead><tbody>
+   <tr class="section"><th class="cat" colspan="${P.length+1}">Верхняя часть</th></tr>
+   ${UPPER.map(row).join("")}
+   ${sumRow("Сумма",(t,i)=>`<td id="up-${i}"></td>`)}
+   ${sumRow("Бонус <small>от 63 · +35</small>",(t,i)=>`<td id="bo-${i}"></td>`)}
+   <tr class="section"><th class="cat" colspan="${P.length+1}">Нижняя часть</th></tr>
+   ${LOWER.map(row).join("")}
+   ${sumRow("Сумма низа",(t,i)=>`<td id="lo-${i}"></td>`)}
+   ${sumRow("Итого",(t,i)=>`<td id="to-${i}"></td>`,"grand")}
+   </tbody>`;
+  refreshTotals();
+}
+
+function refreshTotals(){
+  const P=state.players,T=P.map(totals),best=Math.max(...T.map(t=>t.total));
+  T.forEach((t,i)=>{
+    document.getElementById("up-"+i).textContent=t.up;
+    const b=document.getElementById("bo-"+i);b.textContent=t.bonus?"+35":(t.up?"ещё "+(63-t.up):"—");b.className=t.bonus?"bonus-ok":"";
+    document.getElementById("lo-"+i).textContent=t.low;
+    const to=document.getElementById("to-"+i);to.textContent=t.total;to.className=best>0&&t.total===best&&P.length>1?"leader":"";
+  });
+}
+const t=document.getElementById("t");
+t.addEventListener("input",e=>{
+  const el=e.target;
+  if(el.dataset.n!==undefined){state.players[el.dataset.n].name=el.value;save();return}
+  if(el.dataset.c){const v=el.value.replace(/\D/g,"");state.players[el.dataset.p].s[el.dataset.c]=v===""?undefined:Number(v);save();
+    const c=[...UPPER,...LOWER].find(x=>x.id===el.dataset.c);const has=v!=="";
+    el.className=has?(Number(v)===0?"zero":(c.ok(Number(v))?"":"bad")):"";
+    refreshTotals();}
+});
+t.addEventListener("click",e=>{const d=e.target.dataset.del;if(d!==undefined){state.players.splice(+d,1);save();render()}});
+document.getElementById("add").onclick=()=>{if(state.players.length>=8)return;state.players.push({name:"Игрок "+(state.players.length+1),s:{}});save();render()};
+const rb=document.getElementById("reset");let armed=null;
+rb.onclick=()=>{
+  if(!armed){rb.textContent="Стереть очки?";rb.classList.add("confirm");armed=setTimeout(()=>{armed=null;rb.textContent="Новая игра";rb.classList.remove("confirm")},3000);return}
+  clearTimeout(armed);armed=null;rb.textContent="Новая игра";rb.classList.remove("confirm");
+  state.players.forEach(p=>p.s={});save();render();
+};
+render();
+if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}))}
+</script>
+</body>
+</html>
