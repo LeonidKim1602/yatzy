@@ -95,6 +95,18 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .ctl .btns{display:flex;gap:8px;flex-wrap:wrap}
 .rinfo{color:var(--muted);font-size:13px;margin:0;max-width:44ch}
 .rinfo b{color:var(--ink);font-family:var(--f-num)}
+.who{font:600 14px var(--f-body);border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);padding:8px 10px;min-width:0;max-width:100%}
+.wholab{color:var(--muted);font-size:13px;align-self:center}
+.chips{display:flex;flex-wrap:wrap;gap:6px;width:100%;border-top:1px solid var(--line);padding-top:12px}
+.chiptitle{width:100%;margin:2px 0 0;font:600 11px var(--f-display);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.chip{display:inline-flex;align-items:baseline;gap:8px;padding:7px 12px;border-radius:999px;border:1px solid var(--accent);background:var(--accent-soft);color:var(--ink);font-weight:600;font-size:14px}
+.chip b{font-family:var(--f-num);color:var(--accent);font-variant-numeric:tabular-nums}
+.chip:hover{background:var(--accent);color:var(--paper)}
+.chip:hover b{color:var(--paper)}
+.chip.zero{border-color:var(--line);background:transparent;color:var(--muted);font-weight:500;font-size:13px}
+.chip.zero b{color:var(--muted)}
+.chip.zero:hover{border-color:var(--pip);background:transparent;color:var(--pip)}
+.chip.zero:hover b{color:var(--pip)}
 </style>
 </head>
 <body>
@@ -115,16 +127,21 @@ button:disabled{opacity:.45;cursor:not-allowed}
     <div class="dice" id="dice"></div>
     <div class="ctl">
       <div class="btns">
+        <label class="wholab" for="who">Ходит</label>
+        <select id="who" class="who"></select>
+      </div>
+      <div class="btns">
         <button id="roll" class="primary" type="button">Бросить кубики</button>
         <button id="turn" type="button">Новый ход</button>
       </div>
       <p class="rinfo" id="rinfo" aria-live="polite"></p>
     </div>
+    <div class="chips" id="chips" hidden></div>
   </section>
 
   <div class="pad"><table id="t"></table></div>
 
-  <p class="hint">Нажмите на клетку и введите очки. <b>0</b> — строка вычеркнута. Красным подсвечено значение, которое не подходит под правило строки. Бонус за верхнюю часть даётся при сумме от 63 (по три кубика каждого номинала).</p>
+  <p class="hint">Нажмите на клетку и введите очки или выберите комбинацию под кубиками. <b>0</b> — строка вычеркнута. Красным подсвечено значение, которое не подходит под правило строки. Бонус за верхнюю часть даётся при сумме от 63 (по три кубика каждого номинала).</p>
 </div>
 
 <script>
@@ -158,6 +175,7 @@ function renderDice(rolled=[]){
   rinfo.innerHTML=left===3?"Три броска за ход. Нажмите «Бросить», чтобы начать."
     :left>0?`Сумма <b>${sum}</b> · осталось бросков: <b>${left}</b>. Нажмите на кубик, чтобы оставить его.`
     :`Сумма <b>${sum}</b>. Впишите очки в листок и начните новый ход.`;
+  renderChips();
 }
 function roll(){
   if(left===0)return;
@@ -174,7 +192,53 @@ diceEl.addEventListener("click",e=>{
 });
 rollBtn.onclick=roll;
 turnBtn.onclick=()=>{dice.fill(0);held.fill(false);left=3;renderDice()};
-renderDice();
+
+/* Комбинации: очки за текущий бросок по каждой строке листка */
+const ALL=[...UPPER,...LOWER];
+function scoreAll(d){
+  const c=[0,0,0,0,0,0,0];d.forEach(v=>c[v]++);
+  const sum=d.reduce((a,b)=>a+b,0),vals=[6,5,4,3,2,1],pairs=vals.filter(n=>c[n]>=2);
+  const has=(...n)=>n.every(x=>c[x]>0),r={};
+  for(let n=1;n<=6;n++)r["u"+n]=n*c[n];
+  r.pair=pairs.length?2*pairs[0]:0;
+  r.twopair=pairs.length>=2?2*pairs[0]+2*pairs[1]:0;
+  r.three=vals.some(n=>c[n]>=3)?sum:0;
+  r.four=vals.some(n=>c[n]>=4)?sum:0;
+  r.full=vals.some(n=>c[n]===3)&&vals.some(n=>c[n]===2)?25:0;
+  r.sst=(has(1,2,3,4)||has(2,3,4,5)||has(3,4,5,6))?30:0;
+  r.lst=(has(1,2,3,4,5)||has(2,3,4,5,6))?40:0;
+  r.yatzy=vals.some(n=>c[n]===5)?50:0;
+  r.chance=sum;
+  return r;
+}
+let who=0;
+const whoEl=document.getElementById("who"),chipsEl=document.getElementById("chips");
+function renderWho(){
+  const P=state.players;if(who>=P.length)who=0;
+  whoEl.innerHTML=P.map((p,i)=>`<option value="${i}"${i===who?" selected":""}>${esc(p.name||"Игрок "+(i+1))}</option>`).join("");
+}
+whoEl.onchange=()=>{who=+whoEl.value;renderChips()};
+function renderChips(){
+  const p=state.players[who];
+  if(!dice[0]||!p){chipsEl.hidden=true;chipsEl.innerHTML="";return}
+  const sc=scoreAll(dice);
+  const open=ALL.filter(c=>p.s[c.id]===undefined||p.s[c.id]==="");
+  const pos=open.filter(c=>sc[c.id]>0).sort((a,b)=>sc[b.id]-sc[a.id]);
+  const zero=open.filter(c=>sc[c.id]===0);
+  const chip=(c,z)=>`<button type="button" class="chip${z?" zero":""}" data-id="${c.id}" data-v="${sc[c.id]}" aria-label="Записать ${c.name}: ${sc[c.id]}">${c.name} <b>${sc[c.id]}</b></button>`;
+  chipsEl.hidden=false;
+  chipsEl.innerHTML=!open.length?`<p class="chiptitle">${esc(p.name)}: все строки заполнены</p>`
+    :`<p class="chiptitle">${esc(p.name)}: записать очки</p>`+(pos.length?pos.map(c=>chip(c,false)).join(""):"")
+     +(zero.length?`<p class="chiptitle">Вычеркнуть (0 очков)</p>`+zero.map(c=>chip(c,true)).join(""):"");
+}
+chipsEl.addEventListener("click",e=>{
+  const b=e.target.closest("[data-id]");if(!b)return;
+  const p=state.players[who];if(!p)return;
+  p.s[b.dataset.id]=Number(b.dataset.v);save();
+  dice.fill(0);held.fill(false);left=3;
+  who=(who+1)%state.players.length;
+  render();renderDice();
+});
 
 const KEY="yatzy-sheet-v1";
 let state;
@@ -210,10 +274,12 @@ function render(){
    ${sumRow("Сумма низа",(t,i)=>`<td id="lo-${i}"></td>`)}
    ${sumRow("Итого",(t,i)=>`<td id="to-${i}"></td>`,"grand")}
    </tbody>`;
+  renderWho();
   refreshTotals();
 }
 
 function refreshTotals(){
+  renderChips();
   const P=state.players,T=P.map(totals),best=Math.max(...T.map(t=>t.total));
   T.forEach((t,i)=>{
     document.getElementById("up-"+i).textContent=t.up;
@@ -225,7 +291,7 @@ function refreshTotals(){
 const t=document.getElementById("t");
 t.addEventListener("input",e=>{
   const el=e.target;
-  if(el.dataset.n!==undefined){state.players[el.dataset.n].name=el.value;save();return}
+  if(el.dataset.n!==undefined){state.players[el.dataset.n].name=el.value;save();renderWho();renderChips();return}
   if(el.dataset.c){const v=el.value.replace(/\D/g,"");state.players[el.dataset.p].s[el.dataset.c]=v===""?undefined:Number(v);save();
     const c=[...UPPER,...LOWER].find(x=>x.id===el.dataset.c);const has=v!=="";
     el.className=has?(Number(v)===0?"zero":(c.ok(Number(v))?"":"bad")):"";
@@ -240,6 +306,7 @@ rb.onclick=()=>{
   state.players.forEach(p=>p.s={});save();render();
 };
 render();
+renderDice();
 if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}))}
 </script>
 </body>
