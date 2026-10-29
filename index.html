@@ -77,6 +77,24 @@ td.leader::after{content:"★";position:absolute;top:3px;right:6px;font-size:11p
 .hint{color:var(--muted);font-size:13px;max-width:65ch}
 .hint b{color:var(--ink)}
 @media (max-width:480px){.cat{min-width:118px;padding:7px 8px}.cat small{display:none}}
+button:disabled{opacity:.45;cursor:not-allowed}
+.tray{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-wrap:wrap;align-items:center;gap:14px 24px}
+.dice{display:flex;gap:10px;flex-wrap:wrap}
+.dv{width:58px;padding:0;border:0;background:none;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;font-weight:500;color:var(--muted)}
+.dv small{min-height:14px}
+.dv .face{width:58px;height:58px;border-radius:12px;border:2px solid var(--ink);background:var(--paper);display:grid;grid-template:repeat(3,1fr)/repeat(3,1fr);padding:8px;box-sizing:border-box}
+.dv .face i{width:9px;height:9px;border-radius:50%;background:var(--ink);place-self:center}
+.dv .face.empty{display:flex;align-items:center;justify-content:center;border-style:dashed;border-color:var(--line);font:600 22px var(--f-num);color:var(--muted)}
+.dv.held .face{border-color:var(--accent);background:var(--accent-soft)}
+.dv.held .face i{background:var(--accent)}
+.dv.held small{color:var(--accent);font-weight:600}
+.dv.rolling .face{animation:roll .45s ease-out}
+@keyframes roll{0%{transform:rotate(0) scale(.82)}40%{transform:rotate(-14deg) scale(1.08)}70%{transform:rotate(8deg) scale(1)}100%{transform:none}}
+@media (prefers-reduced-motion:reduce){.dv.rolling .face{animation:none}}
+.ctl{display:flex;flex-direction:column;gap:8px;flex:1;min-width:210px}
+.ctl .btns{display:flex;gap:8px;flex-wrap:wrap}
+.rinfo{color:var(--muted);font-size:13px;margin:0;max-width:44ch}
+.rinfo b{color:var(--ink);font-family:var(--f-num)}
 </style>
 </head>
 <body>
@@ -92,6 +110,17 @@ td.leader::after{content:"★";position:absolute;top:3px;right:6px;font-size:11p
       <button id="reset" type="button">Новая игра</button>
     </div>
   </header>
+
+  <section class="tray" aria-label="Кубики">
+    <div class="dice" id="dice"></div>
+    <div class="ctl">
+      <div class="btns">
+        <button id="roll" class="primary" type="button">Бросить кубики</button>
+        <button id="turn" type="button">Новый ход</button>
+      </div>
+      <p class="rinfo" id="rinfo" aria-live="polite"></p>
+    </div>
+  </section>
 
   <div class="pad"><table id="t"></table></div>
 
@@ -115,6 +144,38 @@ const LOWER=[
   {id:"yatzy",name:"Яцзы",rule:"5 одинаковых · 50",ok:v=>v===50},
   {id:"chance",name:"Шанс",rule:"сумма всех кубиков",ok:sumOk(5,30)},
 ];
+/* Кубики: 3 броска за ход, любые кубики можно оставить и перебросить остальные */
+const dice=[0,0,0,0,0],held=[false,false,false,false,false];let left=3;
+const diceEl=document.getElementById("dice"),rollBtn=document.getElementById("roll"),turnBtn=document.getElementById("turn"),rinfo=document.getElementById("rinfo");
+const rnd=()=>{try{const a=new Uint32Array(1);crypto.getRandomValues(a);return a[0]%6+1}catch(e){return Math.floor(Math.random()*6)+1}};
+const canHold=()=>left>0&&left<3;
+function renderDice(rolled=[]){
+  diceEl.innerHTML=dice.map((v,i)=>`<button type="button" class="dv${held[i]?" held":""}${rolled.includes(i)?" rolling":""}" data-d="${i}" aria-pressed="${held[i]}" aria-label="Кубик ${i+1}: ${v||"не брошен"}${held[i]?", оставлен":""}">${
+    v?`<span class="face">${PIPS[v].map(([r,c])=>`<i style="grid-area:${r}/${c}"></i>`).join("")}</span>`:`<span class="face empty">?</span>`}<small>${held[i]?"оставлен":""}</small></button>`).join("");
+  const free=held.filter(h=>!h).length, sum=dice.reduce((a,b)=>a+b,0);
+  rollBtn.textContent=left===3?"Бросить кубики":(left>0?`Перебросить (${free})`:"Броски закончены");
+  rollBtn.disabled=left===0||(canHold()&&free===0);
+  rinfo.innerHTML=left===3?"Три броска за ход. Нажмите «Бросить», чтобы начать."
+    :left>0?`Сумма <b>${sum}</b> · осталось бросков: <b>${left}</b>. Нажмите на кубик, чтобы оставить его.`
+    :`Сумма <b>${sum}</b>. Впишите очки в листок и начните новый ход.`;
+}
+function roll(){
+  if(left===0)return;
+  const idx=[];
+  dice.forEach((_,i)=>{if(left===3||!held[i]){dice[i]=rnd();idx.push(i)}});
+  left--;
+  if(left===0)held.fill(false);
+  renderDice(idx);
+}
+diceEl.addEventListener("click",e=>{
+  const b=e.target.closest("[data-d]");if(!b)return;
+  const i=+b.dataset.d;
+  if(dice[i]&&canHold()){held[i]=!held[i];renderDice()}
+});
+rollBtn.onclick=roll;
+turnBtn.onclick=()=>{dice.fill(0);held.fill(false);left=3;renderDice()};
+renderDice();
+
 const KEY="yatzy-sheet-v1";
 let state;
 try{state=JSON.parse(localStorage.getItem(KEY))}catch(e){}
